@@ -114,7 +114,9 @@
             padding-top: calc(52px + var(--safe-top));
             padding-bottom: calc(90px + var(--safe-bottom));
             scroll-behavior: smooth; -webkit-overflow-scrolling: touch;
+            scrollbar-width: none; -ms-overflow-style: none;
         }
+        main::-webkit-scrollbar { display: none; }
 
         .hdm-section-head { font-size: 19px; font-weight: 800; padding: 25px 20px 12px; display: flex; justify-content: space-between; align-items: center; }
         .section-more { font-size: 13px; color: var(--accent); font-weight: 700; }
@@ -122,7 +124,8 @@
         .movie-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; padding: 0 20px; }
         @media (min-width: 480px) { .movie-grid { grid-template-columns: repeat(3, 1fr); } }
 
-        .h-scroll { display: flex; gap: 14px; overflow-x: auto; padding: 0 20px 10px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+        .h-scroll { display: flex; gap: 14px; overflow-x: auto; padding: 0 20px 10px; scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch; }
+        .h-scroll::-webkit-scrollbar { display: none; }
 
         .m-card { display: flex; flex-direction: column; gap: 8px; cursor: pointer; transition: 0.2s; }
         .m-card:active { transform: scale(0.96); opacity: 0.8; }
@@ -289,7 +292,8 @@
         .person-title-main { font-size: 22px; font-weight: 800; line-height: 1.2; margin-bottom: 4px; }
         .person-title-sub { font-size: 14px; color: var(--text-dim); margin-bottom: 15px; }
 
-        .pill-box { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none; }
+        .pill-box { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none; -ms-overflow-style: none; }
+        .pill-box::-webkit-scrollbar { display: none; }
         .pill {
             flex-shrink: 0; padding: 10px 18px; background: var(--surface-elevated);
             border-radius: var(--radius-md); font-size: 14px; font-weight: 700;
@@ -338,7 +342,8 @@
         .b-simple_seasons__list, .b-simple_episodes__list, .b-translator__list, #translators-list, .b-translator__block,
         #hrezka-loader, .b-player__loader, .b-player__restricted { display: none !important; }
 
-        .genre-scroll { display: flex; overflow-x: auto; gap: 10px; padding: 15px 20px 5px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+        .genre-scroll { display: flex; overflow-x: auto; gap: 10px; padding: 15px 20px 5px; scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch; }
+        .genre-scroll::-webkit-scrollbar { display: none; }
         .genre-pill { padding: 8px 16px; background: rgba(255,255,255,0.06); border-radius: var(--radius-md); font-size: 14px; font-weight: 700; cursor: pointer; transition: 0.2s; white-space: nowrap; }
         .genre-pill.active { background: var(--accent); color: #fff; }
 
@@ -422,7 +427,8 @@
         .b-post__rating_layer li:not(.b-post__rating_layer_current):after { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 10px; font-weight: 800; color: rgba(255,255,255,0.6); pointer-events: none; }
         .b-post__rating_layer li:nth-child(2):after { content: '1'; } .b-post__rating_layer li:nth-child(3):after { content: '2'; } .b-post__rating_layer li:nth-child(4):after { content: '3'; } .b-post__rating_layer li:nth-child(5):after { content: '4'; } .b-post__rating_layer li:nth-child(6):after { content: '5'; } .b-post__rating_layer li:nth-child(7):after { content: '6'; } .b-post__rating_layer li:nth-child(8):after { content: '7'; } .b-post__rating_layer li:nth-child(9):after { content: '8'; } .b-post__rating_layer li:nth-child(10):after { content: '9'; } .b-post__rating_layer li:nth-child(11):after { content: '10'; }
 
-        .franchise-scroll { display: flex; overflow-x: auto; gap: 12px; padding: 5px 0 15px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+        .franchise-scroll { display: flex; overflow-x: auto; gap: 12px; padding: 5px 0 15px; scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch; }
+        .franchise-scroll::-webkit-scrollbar { display: none; }
         .franchise-card { background: rgba(255,255,255,0.04); padding: 15px; border-radius: var(--radius-md); min-width: 160px; max-width: 220px; border: 1px solid rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 6px; cursor: pointer; flex-shrink: 0; }
         .franchise-card.current { background: rgba(0, 173, 239, 0.1); border-color: rgba(0, 173, 239, 0.3); }
         .f-title { font-size: 13px; font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -476,7 +482,8 @@
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         /* Search Tabs */
-        .s-tabs { display: flex; gap: 10px; padding: 0 20px 15px; overflow-x: auto; scrollbar-width: none; }
+        .s-tabs { display: flex; gap: 10px; padding: 0 20px 15px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+        .s-tabs::-webkit-scrollbar { display: none; }
         .s-tab { padding: 8px 16px; }
         header {
             position: fixed; top: 0; left: 0; right: 0;
@@ -692,7 +699,8 @@
         .p-avatar-img { width: 64px; height: 64px; border-radius: 50%; overflow: hidden; border: 2px solid var(--accent); }
         .p-avatar-img img { width: 100%; height: 100%; object-fit: cover; }
         
-        .p-currency-bar { display: flex; gap: 10px; overflow-x: auto; padding: 0 20px 15px; scrollbar-width: none; }
+        .p-currency-bar { display: flex; gap: 10px; overflow-x: auto; padding: 0 20px 15px; scrollbar-width: none; -ms-overflow-style: none; }
+        .p-currency-bar::-webkit-scrollbar { display: none; }
         .p-method-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 0 20px 20px; }
         .p-method-card { background: var(--surface); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 8px; transition: 0.2s; cursor: pointer; }
         .p-method-card.active { border-color: var(--accent); background: rgba(255,45,85,0.05); }
