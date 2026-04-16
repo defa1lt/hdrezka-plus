@@ -38,7 +38,20 @@
   }
   fixViewport();
 
-  // --- 2. PREMIUM CSS ---
+  document.addEventListener('DOMContentLoaded', fixViewport, { once: true });
+
+  const VIEWPORT_CONTENT = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+  const vpObserver = new MutationObserver(() => {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta || meta.getAttribute('content') !== VIEWPORT_CONTENT) fixViewport();
+  });
+  const startVpObserver = () => {
+    if (document.head) vpObserver.observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content'] });
+  };
+  if (document.head) startVpObserver();
+  else document.addEventListener('DOMContentLoaded', startVpObserver, { once: true });
+
+  // --- 2. CSS ---
   const CSS = `
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
 
@@ -460,6 +473,7 @@
         .upd-sk-line { height: 12px; border-radius: 4px; width: 100%; }
         @keyframes shimmer { to { background-position: -200% 0; } }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         /* Search Tabs */
         .s-tabs { display: flex; gap: 10px; padding: 0 20px 15px; overflow-x: auto; scrollbar-width: none; }
