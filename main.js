@@ -2108,6 +2108,26 @@
         const scrubKnob = h('div', { class: 'hdm-player-scrub-knob' });
         const timeCurr = h('div', { class: 'hdm-player-time' }, '0:00');
         const timeTotal = h('div', { class: 'hdm-player-time', style: 'text-align:right' }, '0:00');
+        const scrubEl = h('div', { class: 'hdm-player-scrub', onClick: (e) => {
+          e.stopPropagation();
+          const rect = e.currentTarget.getBoundingClientRect();
+          const pos = (e.clientX - rect.left) / rect.width;
+          if (!isNaN(video.duration)) video.currentTime = pos * video.duration;
+        }}, scrubBuf, scrubAct, scrubKnob);
+        let _scrubDragging = false;
+        const _scrubSeek = (clientX) => {
+          const rect = scrubEl.getBoundingClientRect();
+          const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+          if (!isNaN(video.duration)) {
+            video.currentTime = pos * video.duration;
+            scrubAct.style.width = (pos * 100) + '%';
+            scrubKnob.style.left = (pos * 100) + '%';
+            timeCurr.textContent = formatTime(video.currentTime);
+          }
+        };
+        scrubEl.addEventListener('touchstart', (e) => { e.stopPropagation(); _scrubDragging = true; _scrubSeek(e.touches[0].clientX); showUI(); }, { passive: true });
+        scrubEl.addEventListener('touchmove', (e) => { if (!_scrubDragging) return; e.stopPropagation(); e.preventDefault(); _scrubSeek(e.touches[0].clientX); }, { passive: false });
+        scrubEl.addEventListener('touchend', (e) => { _scrubDragging = false; e.stopPropagation(); showUI(); }, { passive: true });
         const playBtnBig = h('div', { class: 'hdm-player-big-btn hdm-focusable hdm-buffering', onClick: (e) => { e.stopPropagation(); togglePlay(); } });
 
         // Feature detection
@@ -2161,14 +2181,7 @@
           h('div', { class: 'hdm-player-bottom' },
             h('div', { class: 'hdm-player-progress-container' },
               timeCurr,
-              h('div', {
-                class: 'hdm-player-scrub', onClick: (e) => {
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const pos = (e.clientX - rect.left) / rect.width;
-                  video.currentTime = pos * video.duration;
-                }
-              }, scrubBuf, scrubAct, scrubKnob),
+              scrubEl,
               timeTotal
             ),
             h('div', { class: 'hdm-player-actions' },
@@ -2490,6 +2503,11 @@
           };
           [100, 300, 500].forEach(ms => setTimeout(checkPopup, ms));
         };
+        favToggle.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          favToggle.onclick(e);
+        }, { passive: false });
       }
 
       const descEl = h('div', { class: 'desc truncated' }, d.desc);
