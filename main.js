@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HDrezka Plus
 // @namespace    hdrezka
-// @version      1.1001
+// @version      1.0002
 // @author       dea1lt
 // @match        *://hdrezka*/*
 // @match        *://*.hdrezka*/*
@@ -2818,7 +2818,7 @@
         h('div', { class: 'p-item hdm-focusable', onClick: () => navigateTo('/payments/') }, 'Платежи'),
         h('div', { class: 'p-item logout', onClick: () => navigateTo('/logout/') }, 'Выйти')
       ),
-      h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.1001')
+      h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0002')
     );
     main.appendChild(p);
   }
