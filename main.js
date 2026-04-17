@@ -1225,6 +1225,12 @@
   function triggerNativeClick(el) {
     if (!el) return;
     try {
+      // For mobile compatibility (iOS)
+      if (typeof TouchEvent !== 'undefined') {
+        const t = new Touch({ identifier: Date.now(), target: el, clientX: 0, clientY: 0 });
+        el.dispatchEvent(new TouchEvent('touchstart', { touches: [t], targetTouches: [t], changedTouches: [t], bubbles: true, cancelable: true }));
+        el.dispatchEvent(new TouchEvent('touchend', { touches: [], targetTouches: [], changedTouches: [t], bubbles: true, cancelable: true }));
+      }
       el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
       el.click();
@@ -2474,13 +2480,18 @@
         }
         backdrop.onclick = closeModal;
         favToggle.onclick = (e) => {
-          e.stopPropagation();
+          if (e) {
+            e.stopPropagation();
+            if (e.cancelable) e.preventDefault();
+          }
+          
           if (document.querySelector('.hdm-modal-base.hdm-active')) return closeModal();
           const win = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
           const nativeFav = document.querySelector('.add-favorite');
           if (nativeFav) triggerNativeClick(nativeFav);
           else if (win.sof?.home?.favorites) win.sof.home.favorites(d.postId, 'show');
           else if (win.sof?.fav?.init_post_dropdown) win.sof.fav.init_post_dropdown(null, d.postId);
+          
           const checkPopup = () => {
             ['.b-userset__fav_holder', '#user-favorites-holder'].forEach(s => {
               const h_node = document.querySelector(s);
@@ -2501,11 +2512,9 @@
               }
             });
           };
-          [100, 300, 500].forEach(ms => setTimeout(checkPopup, ms));
+          [50, 150, 300, 600, 1000].forEach(ms => setTimeout(checkPopup, ms));
         };
         favToggle.addEventListener('touchend', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
           favToggle.onclick(e);
         }, { passive: false });
       }
