@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HDrezka Plus
 // @namespace    hdrezka
-// @version      1.0004
+// @version      1.0005
 // @author       dea1lt
 // @match        *://hdrezka*/*
 // @match        *://*.hdrezka*/*
@@ -242,17 +242,36 @@
         #hdm-pjs-player { width: 100% !important; height: 100% !important; position: relative !important; overflow: hidden !important; }
         #hdm-pjs-player * { display: none !important; }
         #hdm-pjs-player pjsdiv:has(video),
-        #hdm-pjs-player video {
+        #hdm-pjs-player video,
+        /* Ad Layer allowance (VAST/Ads) */
+        #hdm-pjs-player pjsdiv[style*="z-index: 3001"],
+        #hdm-pjs-player pjsdiv[style*="z-index: 3001"] *,
+        /* Skip button and info elements allowance */
+        #hdm-pjs-player pjsdiv[style*="bottom: 10px"][style*="left: 10px"],
+        #hdm-pjs-player pjsdiv[style*="bottom: 10px"][style*="left: 10px"] *,
+        #hdm-pjs-player pjsdiv[style*="top: 0px"][style*="left: 0px"][style*="background-color: rgba(0, 0, 0, 0.5)"],
+        #hdm-pjs-player pjsdiv[style*="top: 0px"][style*="left: 0px"][style*="background-color: rgba(0, 0, 0, 0.5)"] *,
+        /* Also allow any element that looks like a skip button SVG wrapper */
+        #hdm-pjs-player pjsdiv:has(svg#pljsvastprogress_hdm-pjs-player) {
             display: block !important;
-            position: absolute !important;
-            top: 0 !important; left: 0 !important;
-            width: 100% !important; height: 100% !important;
             opacity: 1 !important;
             visibility: visible !important;
+            pointer-events: auto !important;
+        }
+        /* Raise ad layer and skip button to top (above custom UI 10001 and modals 20000000) */
+        #hdm-pjs-player pjsdiv[style*="z-index: 3001"] {
+            z-index: 20000001 !important;
+        }
+        #hdm-pjs-player pjsdiv[style*="bottom: 10px"][style*="left: 10px"],
+        #hdm-pjs-player pjsdiv:has(svg#pljsvastprogress_hdm-pjs-player) {
+            z-index: 2147483647 !important;
         }
         #hdm-pjs-player video {
             object-fit: contain !important;
             pointer-events: auto !important;
+            position: absolute !important;
+            top: 0 !important; left: 0 !important;
+            width: 100% !important; height: 100% !important;
         }
         #hdm-player-wrap video, #hdm-player-wrap iframe {
             width: 100%; height: 100%; object-fit: contain; transition: 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -3119,7 +3138,7 @@
         h('div', { class: 'p-links' },
           h('div', { class: 'p-item hdm-focusable', onClick: () => loadLoginView() }, 'Войти')
         ),
-        h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0004')
+        h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0005')
       );
       main.appendChild(p);
       return;
@@ -3164,7 +3183,7 @@
         h('div', { class: 'p-item hdm-focusable', onClick: () => navigateTo('/payments/') }, 'Платежи'),
         h('div', { class: 'p-item logout', onClick: () => navigateTo('/logout/') }, 'Выйти')
       ),
-      h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0004')
+      h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0005')
     );
     main.appendChild(p);
   }
