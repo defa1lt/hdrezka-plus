@@ -2479,12 +2479,16 @@
           document.getElementById('hdm-app').appendChild(backdrop);
         }
         backdrop.onclick = closeModal;
+        let _favLastTs = 0;
         favToggle.onclick = (e) => {
+          const now = Date.now();
+          if (now - _favLastTs < 600) return; // Safari: prevent touchend + click double-fire
+          _favLastTs = now;
           if (e) {
             e.stopPropagation();
             if (e.cancelable) e.preventDefault();
           }
-          
+
           if (document.querySelector('.hdm-modal-base.hdm-active')) return closeModal();
           const win = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
           const nativeFav = document.querySelector('.add-favorite');
