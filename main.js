@@ -399,7 +399,7 @@
         .hdm-modal-base small { margin-left: auto; opacity: 0.5; }
         .hdm-modal-base .start-info { font-size: 13px; color: var(--text-dim); margin-bottom: 15px; }
 
-        .b-userset__fav_addcat_inner, .b-userset__fav_addcat_editor, .b-userset__fav_addcat { display: none !important; }
+        .b-userset__fav_addcat_inner, .b-userset__fav_addcat_editor, .b-userset__fav_addcat, #addcat-fav-close, .b-userset__fav_addcat_wrapper > a { display: none !important; }
 
         .hdm-create-cat-btn { background: rgba(255,255,255,0.05); padding: 15px; text-align: center; border-radius: 12px; font-weight: 600; color: var(--accent); cursor: pointer; margin-top: 15px; border: 1px dashed rgba(255,255,255,0.2); transition: 0.2s; }
         .hdm-create-cat-btn:active { background: rgba(255,255,255,0.1); }
@@ -1383,7 +1383,7 @@
       return parseInt(localStorage.getItem(this.getKey(postId, tId, sId, eId)) || 0);
     }
   };
-  
+
   const FocusManager = {
     current: null,
     isRemote: false,
@@ -1414,23 +1414,23 @@
 
     onKeyDown(e) {
       if (State.isWatching) {
-          const v = document.querySelector('#hdm-player-wrap video');
-          if (e.key === ' ' || e.key === 'Enter') {
-              e.preventDefault();
-              const playBtn = document.querySelector('.hdm-player-big-btn');
-              if (playBtn) playBtn.click();
-              return;
-          }
-          if (e.key === 'ArrowRight') { if (v) v.currentTime += 10; return; }
-          if (e.key === 'ArrowLeft') { if (v) v.currentTime -= 10; return; }
-          if (e.key === 'ArrowUp') { if (v) v.volume = Math.min(1, v.volume + 0.1); return; }
-          if (e.key === 'ArrowDown') { if (v) v.volume = Math.max(0, v.volume - 0.1); return; }
-          if (e.key === 'Backspace' || e.key === 'Escape') {
-              e.preventDefault();
-              const closeBtn = document.querySelector('.hdm-player-back');
-              if (closeBtn) closeBtn.click();
-              return;
-          }
+        const v = document.querySelector('#hdm-player-wrap video');
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          const playBtn = document.querySelector('.hdm-player-big-btn');
+          if (playBtn) playBtn.click();
+          return;
+        }
+        if (e.key === 'ArrowRight') { if (v) v.currentTime += 10; return; }
+        if (e.key === 'ArrowLeft') { if (v) v.currentTime -= 10; return; }
+        if (e.key === 'ArrowUp') { if (v) v.volume = Math.min(1, v.volume + 0.1); return; }
+        if (e.key === 'ArrowDown') { if (v) v.volume = Math.max(0, v.volume - 0.1); return; }
+        if (e.key === 'Backspace' || e.key === 'Escape') {
+          e.preventDefault();
+          const closeBtn = document.querySelector('.hdm-player-back');
+          if (closeBtn) closeBtn.click();
+          return;
+        }
       }
 
       const keys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Backspace', 'Escape'];
@@ -1440,9 +1440,9 @@
         this.isRemote = true;
         document.body.classList.add('hdm-remote-mode');
         if (!this.current) {
-            this.focusFirst();
-            if (this.current) e.preventDefault();
-            return;
+          this.focusFirst();
+          if (this.current) e.preventDefault();
+          return;
         }
       }
 
@@ -1455,15 +1455,15 @@
       }
 
       if (e.key === 'Backspace' || e.key === 'Escape') {
-          const modal = document.querySelector('.hdm-modal-base.hdm-active');
-          if (modal) {
-              e.preventDefault();
-              closeModal();
-          } else if (document.body.classList.contains('can-back')) {
-              e.preventDefault();
-              history.back();
-          }
-          return;
+        const modal = document.querySelector('.hdm-modal-base.hdm-active');
+        if (modal) {
+          e.preventDefault();
+          closeModal();
+        } else if (document.body.classList.contains('can-back')) {
+          e.preventDefault();
+          history.back();
+        }
+        return;
       }
 
       e.preventDefault();
@@ -1472,8 +1472,8 @@
 
     move(dir) {
       const focusables = Array.from(document.querySelectorAll('.hdm-focusable:not([style*="display: none"])')).filter(el => {
-          const rect = el.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
       });
       if (!focusables.length) return;
 
@@ -1508,7 +1508,7 @@
         // We favor elements that are more aligned in the primary direction
         const distSq = dx * dx + dy * dy;
         let score = distSq;
-        
+
         if (dir === 'ArrowUp' || dir === 'ArrowDown') score += Math.abs(dx) * 2;
         else score += Math.abs(dy) * 2;
 
@@ -1665,10 +1665,10 @@
     if (isMoviePage) await loadDetailsView(path);
     else if (isPersonPage) await loadPersonView(path);
     State.isNavigating = false;
-    
+
     // Focus first element on new page after render
     setTimeout(() => {
-        if (FocusManager.isRemote) FocusManager.focusFirst();
+      if (FocusManager.isRemote) FocusManager.focusFirst();
     }, 500);
   }
 
@@ -2114,12 +2114,14 @@
         const scrubKnob = h('div', { class: 'hdm-player-scrub-knob' });
         const timeCurr = h('div', { class: 'hdm-player-time' }, '0:00');
         const timeTotal = h('div', { class: 'hdm-player-time', style: 'text-align:right' }, '0:00');
-        const scrubEl = h('div', { class: 'hdm-player-scrub', onClick: (e) => {
-          e.stopPropagation();
-          const rect = e.currentTarget.getBoundingClientRect();
-          const pos = (e.clientX - rect.left) / rect.width;
-          if (!isNaN(video.duration)) video.currentTime = pos * video.duration;
-        }}, scrubBuf, scrubAct, scrubKnob);
+        const scrubEl = h('div', {
+          class: 'hdm-player-scrub', onClick: (e) => {
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pos = (e.clientX - rect.left) / rect.width;
+            if (!isNaN(video.duration)) video.currentTime = pos * video.duration;
+          }
+        }, scrubBuf, scrubAct, scrubKnob);
         let _scrubDragging = false;
         const _scrubSeek = (clientX) => {
           const rect = scrubEl.getBoundingClientRect();
@@ -2229,11 +2231,11 @@
           ),
           drawer
         );
-        
+
         if (State.zoomMode) {
-            playerWrap.classList.add('hdm-zoom-fill');
-            const zoomBtn = overlay.querySelector('#hdm-zoom-btn');
-            if (zoomBtn) zoomBtn.style.color = 'var(--accent)';
+          playerWrap.classList.add('hdm-zoom-fill');
+          const zoomBtn = overlay.querySelector('#hdm-zoom-btn');
+          if (zoomBtn) zoomBtn.style.color = 'var(--accent)';
         }
 
         const renderDrawerContent = (type) => {
@@ -2495,7 +2497,7 @@
           if (nativeFav) triggerNativeClick(nativeFav);
           else if (win.sof?.home?.favorites) win.sof.home.favorites(d.postId, 'show');
           else if (win.sof?.fav?.init_post_dropdown) win.sof.fav.init_post_dropdown(null, d.postId);
-          
+
           const checkPopup = () => {
             ['.b-userset__fav_holder', '#user-favorites-holder'].forEach(s => {
               const h_node = document.querySelector(s);
@@ -2508,6 +2510,33 @@
                   handle.className = 'hdm-modal-handle';
                   handle.onclick = (ev) => { ev.stopPropagation(); closeModal(); };
                   h_node.insertBefore(handle, h_node.firstChild);
+                }
+                // Hide native close link
+                h_node.querySelectorAll('#addcat-fav-close, .b-userset__fav_link').forEach(el => el.style.display = 'none');
+                // Inject custom create-category button
+                if (!h_node.querySelector('.hdm-create-cat-btn')) {
+                  const createBtn = document.createElement('div');
+                  createBtn.className = 'hdm-create-cat-btn';
+                  createBtn.textContent = '+ Создать новый раздел';
+                  createBtn.onclick = (ev) => {
+                    ev.stopPropagation();
+                    showPrompt('Новый раздел', 'Название раздела', 'Создать', async (val) => {
+                      const nameInput = document.getElementById('addcat-fav-name');
+                      const addBtn = document.getElementById('addcat-fav-addbt');
+                      if (nameInput && addBtn) {
+                        nameInput.value = val;
+                        addBtn.click();
+                      } else {
+                        // fallback: AJAX create only
+                        const fd = new URLSearchParams();
+                        fd.append('action', 'add_cat'); fd.append('name', val);
+                        await fetch('/ajax/favorites/', { method: 'POST', body: fd, headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' } });
+                      }
+                    });
+                  };
+                  const favList = h_node.querySelector('#user-favorites-list');
+                  if (favList) favList.appendChild(createBtn);
+                  else h_node.appendChild(createBtn);
                 }
                 if (!h_node.classList.contains('hdm-active')) {
                   h_node.classList.add('hdm-active');
@@ -3317,7 +3346,7 @@
     );
     document.body.appendChild(app);
     document.body.appendChild(h('div', { id: 'hdm-progress' }));
-    
+
     FocusManager.init();
     window.onpopstate = (e) => {
       const isPlayerState = !!(e.state && e.state.isWatching);
