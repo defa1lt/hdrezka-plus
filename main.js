@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         HDrezka Plus
 // @namespace    hdrezka
-// @version      1.0002
+// @version      1.0003
 // @author       dea1lt
 // @match        *://hdrezka*/*
 // @match        *://*.hdrezka*/*
 // @match        *://rezka*/*
 // @match        *://*.rezka*/*
 // @match        *://hdrzk*/*
-// @match        *://*.hdrzk*/*
+// @include      *://*rezka*.*/*
 // @include      /^https?:\/\/hdrezka[a-z0-9]+\.org\/.*$/
 // @grant        unsafeWindow
 // @run-at       document-start
@@ -1140,6 +1140,11 @@
   };
 
   // --- 4. UTILS & HELPERS ---
+  // Detects the mirror's login-gate page (returns 404 with a login form)
+  function isLoginGate(html) {
+    return !!(html && (html.includes('id="check-form"') || html.includes("id='check-form'")));
+  }
+
   function normalizePath(p) {
     if (!p) return '/';
     try {
@@ -1601,7 +1606,13 @@
 
     document.body.classList.remove('hdm-login-mode');
 
-    if (!await isLoggedIn()) { loadLoginView(); return; }
+    // Pages that require auth — redirect to login if not logged in
+    const _protectedPaths = ['/favorites/', '/settings/', '/settings/security/', '/payments/'];
+    if (_protectedPaths.some(p => path.startsWith(p)) && !await isLoggedIn()) {
+      State.isNavigating = false;
+      loadLoginView();
+      return;
+    }
 
     const favBtn = document.querySelector('.fav-header-btn');
     if (favBtn) favBtn.style.display = isMoviePage ? 'block' : 'none';
@@ -1740,8 +1751,9 @@
     try {
       const buildMoreUrl = (filter) => filter === '/' ? '/new/' : `/?filter=${filter}${State.genre !== 0 ? '&genre=' + State.genre : ''}`;
 
+      const loggedIn = await isLoggedIn();
       const reqs = [
-        { key: 'cont', url: '/continue/', title: 'Продолжить просмотр', more: '/continue/' },
+        ...(loggedIn ? [{ key: 'cont', url: '/continue/', title: 'Продолжить просмотр', more: '/continue/' }] : []),
         { key: 'colls', url: '/collections/', title: 'Подборки', more: '/collections/' },
         { key: 'last', url: buildParams('last'), title: 'Новинки', more: buildMoreUrl('last') },
         { key: 'pop', url: buildParams('popular'), title: 'Популярные', more: buildMoreUrl('popular') },
@@ -1786,6 +1798,12 @@
       for (const r of reqs) {
         try {
           const html = await req(r.url);
+          if (isLoginGate(html)) {
+            _cachedAuth = false;
+            State.isNavigating = false;
+            loadLoginView();
+            return;
+          }
           const doc = new DOMParser().parseFromString(html, 'text/html');
           let items = [];
 
@@ -1806,6 +1824,11 @@
           console.warn(`Failed to load section ${r.title}`, e);
           sectionMounts[r.key].innerHTML = `<div style="padding:20px;text-align:center;color:var(--accent);font-size:12px;" onClick="location.reload()">Не удалось загрузить ${r.title}. Нажмите для повтора</div>`;
         }
+      }
+
+      // If every section was removed (e.g. server returns 404 for all requests), show error
+      if (!contentWrap.children.length) {
+        contentWrap.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-dim);font-size:15px;line-height:1.6;">Сервер недоступен или вернул ошибку.<br>Проверьте подключение к интернету или попробуйте обновить страницу.<br><br><span style="color:var(--accent);font-weight:700;cursor:pointer;" onclick="location.reload()">Обновить</span></div>';
       }
     } catch (e) {
       contentWrap.innerHTML = '<div style="text-align:center;padding:50px;color:var(--accent);">Ошибка сети</div>';
@@ -2630,12 +2653,23 @@
   }
 
   async function loadFavorites() {
-    const html = await req('/favorites/');
+    let html;
+    try { html = await req('/favorites/'); } catch (e) { html = ''; }
     const cats = RezkaParser.parseBookmarks(html);
     updateHeaderTitle('Закладки');
-    ensureFavHeaderActions();
 
     const main = document.querySelector('main');
+
+    // If the response is the mirror's login gate, or has no favorites content → show login
+    const hasFavPage = html && html.includes('b-favorites_content');
+    if (!hasFavPage || isLoginGate(html)) {
+      _cachedAuth = false;
+      State.isNavigating = false;
+      loadLoginView();
+      return;
+    }
+
+    ensureFavHeaderActions();
 
     let openSwipeCard = null;
 
@@ -2802,7 +2836,7 @@
     observer.observe(loader);
   }
 
-  function loadProfileView() {
+  async function loadProfileView() {
     const main = document.querySelector('main');
     main.innerHTML = '';
     updateHeaderTitle('Профиль');
@@ -2820,18 +2854,45 @@
       if (lbl) lbl.textContent = isLight() ? 'Светлая тема' : 'Тёмная тема';
     };
 
-    // User profile URL: from topauth link or from hidden input in page
-    const userPath = document.querySelector('.b-topauth_user__name a, .b-topauth__link')?.getAttribute('href')
-      || (() => {
-        const uid = document.querySelector('input[name="username_id"]')?.value
-          || document.querySelector('input[data-user_id]')?.getAttribute('data-user_id');
-        return uid ? `/user/${uid}/` : null;
-      })()
-      || '/';
-
     const themeToggle = h('div', { id: 'hdm-theme-tog', class: 'p-theme-toggle' + (isLight() ? ' on' : '') });
     themeToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleTheme(); });
 
+    const loggedIn = await isLoggedIn();
+
+    if (!loggedIn) {
+      // Guest profile: appearance + player settings + login button
+      const p = h('div', { class: 'p-wrapper' },
+        h('div', { class: 'p-header' }, 'Внешний вид'),
+        h('div', { class: 'p-links' },
+          h('div', { class: 'p-item p-item-theme', onClick: toggleTheme },
+            h('span', { id: 'hdm-theme-lbl' }, isLight() ? 'Светлая тема' : 'Тёмная тема'),
+            themeToggle
+          )
+        ),
+        h('div', { class: 'p-header', style: 'margin-top:24px' }, 'Настройки плеера'),
+        h('div', { class: 'p-links' },
+          h('div', { class: 'p-item hdm-focusable', style: 'justify-content: space-between;' },
+            h('span', {}, 'Качество по умолчанию'),
+            h('select', {
+              style: 'background:none; border:none; color:var(--accent); font-weight:700; font-family:inherit; font-size:14px; outline:none; direction:rtl; width: 120px;',
+              onChange: (e) => localStorage.setItem('hdm-default-quality', e.target.value)
+            }, ['2160p', '1440p', '1080p Ultra', '1080p', '720p', '480p', '360p'].map(q => {
+              const current = localStorage.getItem('hdm-default-quality') || '1080p';
+              return h('option', { value: q, ...(q === current ? { selected: 'selected' } : {}) }, q);
+            }))
+          )
+        ),
+        h('div', { class: 'p-header', style: 'margin-top:24px' }, 'Аккаунт'),
+        h('div', { class: 'p-links' },
+          h('div', { class: 'p-item hdm-focusable', onClick: () => loadLoginView() }, 'Войти')
+        ),
+        h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0003')
+      );
+      main.appendChild(p);
+      return;
+    }
+
+    // Logged-in profile
     const p = h('div', { class: 'p-wrapper' },
       h('div', { class: 'p-header' }, 'Внешний вид'),
       h('div', { class: 'p-links' },
@@ -2860,7 +2921,7 @@
         h('div', { class: 'p-item hdm-focusable', onClick: () => navigateTo('/payments/') }, 'Платежи'),
         h('div', { class: 'p-item logout', onClick: () => navigateTo('/logout/') }, 'Выйти')
       ),
-      h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0002')
+      h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0003')
     );
     main.appendChild(p);
   }
@@ -3377,11 +3438,7 @@
       const viewNamespace = e.state ? e.state.viewNamespace : null;
       navigateTo(path, viewNamespace, true);
     };
-    if (!await isLoggedIn()) {
-      loadLoginView();
-    } else {
-      navigateTo(location.pathname, null, true);
-    }
+    navigateTo(location.pathname, null, true);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
