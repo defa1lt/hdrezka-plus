@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HDrezka Plus
 // @namespace    hdrezka
-// @version      1.0003
+// @version      1.0004
 // @author       dea1lt
 // @match        *://hdrezka*/*
 // @match        *://*.hdrezka*/*
@@ -16,6 +16,8 @@
 
 (function () {
   'use strict';
+
+  const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
   // --- 1. VIEWPORT & INITIAL SHIELD ---
   const shieldStyle = document.createElement('style');
@@ -237,7 +239,22 @@
             padding-bottom: calc(20px + var(--safe-bottom));
         }
         
-        #hdm-player-wrap video, #hdm-player-wrap iframe { 
+        #hdm-pjs-player { width: 100% !important; height: 100% !important; position: relative !important; overflow: hidden !important; }
+        #hdm-pjs-player * { display: none !important; }
+        #hdm-pjs-player pjsdiv:has(video),
+        #hdm-pjs-player video {
+            display: block !important;
+            position: absolute !important;
+            top: 0 !important; left: 0 !important;
+            width: 100% !important; height: 100% !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+        #hdm-pjs-player video {
+            object-fit: contain !important;
+            pointer-events: auto !important;
+        }
+        #hdm-player-wrap video, #hdm-player-wrap iframe {
             width: 100%; height: 100%; object-fit: contain; transition: 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
             background: #000;
         }
@@ -867,12 +884,93 @@
     lastProcessedUrl: location.pathname.replace(/\/+$/, '') || '/',
     activeTranslatorId: null, activeSeason: null, activeEpisode: null,
     streamQualities: null, streamQuality: null,
+    nativeQualityOverride: null,
     streamSubtitles: null, activeSubtitleId: null,
     zoomMode: parseInt(localStorage.getItem('hdm-zoom-mode') || 0)
   };
 
   // --- 3. REZKA PARSER (SWIFT PORT) ---
   const RezkaParser = {
+    extractPlayerInfo(html, initName) {
+      const needle = `sof.tv.${initName}(`;
+      const start = html.indexOf(needle);
+      if (start === -1) return null;
+
+      let objStart = -1;
+      let inString = false;
+      let quote = '';
+      let escaped = false;
+
+      for (let i = start + needle.length; i < html.length; i++) {
+        const ch = html[i];
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+          } else if (ch === '\\') {
+            escaped = true;
+          } else if (ch === quote) {
+            inString = false;
+            quote = '';
+          }
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          inString = true;
+          quote = ch;
+          continue;
+        }
+        if (ch === '{') {
+          objStart = i;
+          break;
+        }
+      }
+
+      if (objStart === -1) return null;
+
+      let depth = 0;
+      inString = false;
+      quote = '';
+      escaped = false;
+      let objEnd = -1;
+
+      for (let i = objStart; i < html.length; i++) {
+        const ch = html[i];
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+          } else if (ch === '\\') {
+            escaped = true;
+          } else if (ch === quote) {
+            inString = false;
+            quote = '';
+          }
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          inString = true;
+          quote = ch;
+          continue;
+        }
+        if (ch === '{') depth++;
+        if (ch === '}') {
+          depth--;
+          if (depth === 0) {
+            objEnd = i + 1;
+            break;
+          }
+        }
+      }
+
+      if (objEnd === -1) return null;
+
+      try {
+        return Function(`return (${html.slice(objStart, objEnd)});`)();
+      } catch (e) {
+        console.error('[HDrezka] Failed to parse player info', e);
+        return null;
+      }
+    },
+
     parseMovies(node) {
       return [...node.querySelectorAll('.b-content__inline_item')].map(el => {
         const link = el.querySelector('.b-content__inline_item-link > a');
@@ -966,6 +1064,7 @@
           url: item.getAttribute('data-url') || '',
           current: item.classList.contains('current')
         })),
+        playerInfo: RezkaParser.extractPlayerInfo(html, 'initCDNSeriesEvents') || RezkaParser.extractPlayerInfo(html, 'initCDNMoviesEvents'),
         related: RezkaParser.parseMovies(doc.querySelector('.b-sidelist') || h('div')),
         rating: doc.querySelector('.b-post__rating .num')?.textContent.trim() || 0,
         votes: doc.querySelector('.b-post__rating .votes span')?.textContent.trim() || '',
@@ -1999,6 +2098,10 @@
       const playerWrap = document.getElementById('hdm-player-wrap');
       if (!playerWrap) return;
 
+      if (State.nativeSyncInterval) {
+        clearInterval(State.nativeSyncInterval);
+        State.nativeSyncInterval = null;
+      }
       playerWrap.innerHTML = '';
 
       try {
@@ -2058,7 +2161,7 @@
         const qualities = Object.keys(streams);
         if (!qualities.length) throw new Error('Нет ссылок на воспроизведение');
 
-        const preferredQuality = localStorage.getItem('hdm-default-quality') || '1080p';
+        const preferredQuality = State.nativeQualityOverride || localStorage.getItem('hdm-default-quality') || '1080p';
         const priority = ['2160p', '1440p', '1080p Ultra', '1080p', '720p', '480p', '360p'];
 
         let selectedQuality = qualities.find(q => parseQualityLabel(q).text === preferredQuality);
@@ -2074,7 +2177,6 @@
         State.streamQualities = streams;
         State.streamQuality = selectedQuality;
 
-        // Subtitles parsing
         const subs = [];
         if (json.subtitle) {
           try {
@@ -2087,19 +2189,65 @@
         }
         State.streamSubtitles = subs;
 
-        // Create Video
-        const video = h('video', {
-          autoplay: true, playsInline: true,
-          style: 'width:100%;height:100%;background:#000;display:block;',
-          src: streams[selectedQuality]
-        });
+        const getActiveEngineVideo = () => playerWrap.querySelector('video');
+        const isNativeEngine = (localStorage.getItem('hdm-player-type') === 'native') && (typeof pageWindow.Playerjs === 'function');
+        let video = null;
+
+        // --- Native Playerjs branch ---
+        const NativePlayerjs = pageWindow.Playerjs;
+        if (isNativeEngine) {
+          const playerInfo = State.details?.playerInfo || {};
+          const fileStr = Object.entries(streams)
+            .map(([q, url]) => `[${parseQualityLabel(q).text}]${url}`)
+            .join(',');
+
+          const pjsId = 'hdm-pjs-player';
+          const pjsEl = document.createElement('div');
+          pjsEl.id = pjsId;
+          pjsEl.style.cssText = 'width:100%;height:100%;display:block;';
+          playerWrap.appendChild(pjsEl);
+
+          const savedTime = Timecode.get(d.postId, translatorId, seasonId, episodeId);
+          const nativeParams = {
+            id: pjsId,
+            file: fileStr,
+            start: savedTime > 5 ? savedTime : 0,
+            poster: d.poster || ''
+          };
+
+          if (json.subtitle) nativeParams.subtitle = json.subtitle;
+          if (json.thumbnails || playerInfo.thumbnails) nativeParams.thumbnails = json.thumbnails || playerInfo.thumbnails;
+          if (playerInfo.preroll) nativeParams.preroll = playerInfo.preroll;
+          if (playerInfo.midroll) nativeParams.midroll = playerInfo.midroll;
+          if (playerInfo.hlsconfig) nativeParams.hlsconfig = playerInfo.hlsconfig;
+          if (playerInfo.hlsdebug !== undefined) nativeParams.hlsdebug = playerInfo.hlsdebug;
+          if (playerInfo.debug !== undefined) nativeParams.debug = playerInfo.debug;
+          nativeParams.default_quality = State.nativeQualityOverride || localStorage.getItem('pljsquality') || playerInfo.default_quality || parseQualityLabel(selectedQuality).text;
+
+          new NativePlayerjs(nativeParams);
+        } else {
+          // Create Video
+          video = h('video', {
+            autoplay: true, playsInline: true,
+            style: 'width:100%;height:100%;background:#000;display:block;',
+            src: streams[selectedQuality]
+          });
+        }
+
+        const currentVideo = () => isNativeEngine ? getActiveEngineVideo() : video;
+        const withVideo = (fn) => {
+          const v = currentVideo();
+          if (!v) return null;
+          return fn(v);
+        };
 
         // --- CUSTOM OVERLAY ---
         let uiTimeout;
         const showUI = () => {
           overlay.classList.add('show');
           clearTimeout(uiTimeout);
-          if (!video.paused) uiTimeout = setTimeout(() => {
+          const v = currentVideo();
+          if (v && !v.paused) uiTimeout = setTimeout(() => {
             overlay.classList.remove('show');
             closeDrawer();
           }, 3500);
@@ -2108,7 +2256,7 @@
         // Auto-apply active subtitle
         if (State.activeSubtitleId) {
           const s = subs.find(x => x.url === State.activeSubtitleId);
-          if (s) {
+          if (s && !isNativeEngine && video) {
             const track = document.createElement('track');
             track.kind = 'subtitles'; track.label = s.label; track.srclang = 'ru'; track.src = s.url; track.default = true;
             video.appendChild(track);
@@ -2116,7 +2264,10 @@
           }
         }
         const togglePlay = () => {
-          if (video.paused) video.play(); else video.pause();
+          withVideo(v => {
+            if (v.paused) v.play();
+            else v.pause();
+          });
           showUI();
         };
 
@@ -2142,18 +2293,21 @@
             e.stopPropagation();
             const rect = e.currentTarget.getBoundingClientRect();
             const pos = (e.clientX - rect.left) / rect.width;
-            if (!isNaN(video.duration)) video.currentTime = pos * video.duration;
+            withVideo(v => {
+              if (!isNaN(v.duration)) v.currentTime = pos * v.duration;
+            });
           }
         }, scrubBuf, scrubAct, scrubKnob);
         let _scrubDragging = false;
         const _scrubSeek = (clientX) => {
           const rect = scrubEl.getBoundingClientRect();
           const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-          if (!isNaN(video.duration)) {
-            video.currentTime = pos * video.duration;
+          const v = currentVideo();
+          if (v && !isNaN(v.duration)) {
+            v.currentTime = pos * v.duration;
             scrubAct.style.width = (pos * 100) + '%';
             scrubKnob.style.left = (pos * 100) + '%';
-            timeCurr.textContent = formatTime(video.currentTime);
+            timeCurr.textContent = formatTime(v.currentTime);
           }
         };
         scrubEl.addEventListener('touchstart', (e) => { e.stopPropagation(); _scrubDragging = true; _scrubSeek(e.touches[0].clientX); showUI(); }, { passive: true });
@@ -2167,18 +2321,25 @@
           style: (document.pictureInPictureEnabled ? '' : 'display:none'),
           onClick: (e) => {
             e.stopPropagation();
+            const v = currentVideo();
+            if (!v) return;
             if (document.pictureInPictureElement) document.exitPictureInPicture();
-            else video.requestPictureInPicture();
+            else if (typeof v.requestPictureInPicture === 'function') v.requestPictureInPicture();
           }
         }, ICONS.pip);
 
         const airplayBtn = h('div', {
           class: 'hdm-player-act-btn icon-only hdm-focusable',
           style: 'display:none',
-          onClick: (e) => { e.stopPropagation(); video.webkitShowPlaybackTargetPicker(); }
+          onClick: (e) => {
+            e.stopPropagation();
+            withVideo(v => {
+              if (typeof v.webkitShowPlaybackTargetPicker === 'function') v.webkitShowPlaybackTargetPicker();
+            });
+          }
         }, ICONS.airplay);
 
-        if ('webkitShowPlaybackTargetPicker' in HTMLVideoElement.prototype) {
+        if (!isNativeEngine && 'webkitShowPlaybackTargetPicker' in HTMLVideoElement.prototype && video) {
           airplayBtn.style.display = 'flex';
           video.addEventListener('webkitplaybacktargetavailabilitychanged', (e) => {
             airplayBtn.style.display = (e.availability === 'not-available') ? 'none' : 'flex';
@@ -2205,9 +2366,23 @@
             h('div', { class: 'hdm-player-top-acts' }, airplayBtn, pipBtn)
           ),
           h('div', { class: 'hdm-player-center' },
-            h('div', { class: 'hdm-player-side-btn hdm-focusable', onClick: (e) => { e.stopPropagation(); video.currentTime -= 10; showUI(); } }, ICONS.rew),
+            h('div', {
+              class: 'hdm-player-side-btn hdm-focusable',
+              onClick: (e) => {
+                e.stopPropagation();
+                withVideo(v => { v.currentTime -= 10; });
+                showUI();
+              }
+            }, ICONS.rew),
             playBtnBig,
-            h('div', { class: 'hdm-player-side-btn hdm-focusable', onClick: (e) => { e.stopPropagation(); video.currentTime += 10; showUI(); } }, ICONS.fwd)
+            h('div', {
+              class: 'hdm-player-side-btn hdm-focusable',
+              onClick: (e) => {
+                e.stopPropagation();
+                withVideo(v => { v.currentTime += 10; });
+                showUI();
+              }
+            }, ICONS.fwd)
           ),
           h('div', { class: 'hdm-player-bottom' },
             h('div', { class: 'hdm-player-progress-container' },
@@ -2220,17 +2395,29 @@
                 h('div', {
                   class: 'hdm-player-act-btn icon-only', onClick: (e) => {
                     e.stopPropagation();
-                    video.muted = !video.muted;
-                    e.currentTarget.innerHTML = video.muted ? ICONS.mute : ICONS.vol;
+                    const v = currentVideo();
+                    if (!v) return;
+                    v.muted = !v.muted;
+                    e.currentTarget.innerHTML = v.muted ? ICONS.mute : ICONS.vol;
                     showUI();
                   }
-                }, video.muted ? ICONS.mute : ICONS.vol),
+                }, (video && video.muted) ? ICONS.mute : ICONS.vol),
                 h('input', {
-                  type: 'range', class: 'hdm-vol-slider', min: 0, max: 1, step: 0.05, value: video.volume,
-                  onInput: (e) => { video.volume = e.target.value; video.muted = false; showUI(); },
+                  type: 'range', class: 'hdm-vol-slider', min: 0, max: 1, step: 0.05, value: video ? video.volume : 1,
+                  onInput: (e) => {
+                    withVideo(v => {
+                      v.volume = e.target.value;
+                      v.muted = false;
+                    });
+                    showUI();
+                  },
                   onClick: (e) => e.stopPropagation()
                 }),
-                h('div', { class: 'hdm-player-act-btn hdm-focusable', onClick: (e) => { e.stopPropagation(); toggleDrawer('subtitles'); } }, ICONS.cc, 'Субтитры'),
+                h('div', {
+                  class: 'hdm-player-act-btn hdm-focusable',
+                  style: isNativeEngine ? 'display:none' : '',
+                  onClick: (e) => { e.stopPropagation(); toggleDrawer('subtitles'); }
+                }, ICONS.cc, 'Субтитры'),
                 h('div', { class: 'hdm-player-act-btn hdm-focusable', onClick: (e) => { e.stopPropagation(); toggleDrawer('episodes'); } }, ICONS.episodes, 'Серии'),
                 h('div', { class: 'hdm-player-act-btn hdm-focusable', onClick: (e) => { e.stopPropagation(); toggleDrawer('translators'); } }, ICONS.voice, 'Озвучка')
               ),
@@ -2273,9 +2460,18 @@
               const item = h('div', {
                 class: 'p-item hdm-focusable' + (q === State.streamQuality ? ' active' : ''),
                 style: q === State.streamQuality ? 'color:var(--accent)' : '',
-                onClick: () => {
-                  const t = video.currentTime;
+                onClick: async () => {
+                  const t = currentVideo()?.currentTime || 0;
                   State.streamQuality = q;
+                  if (isNativeEngine) {
+                    State.nativeQualityOverride = parseQualityLabel(q).text;
+                    localStorage.setItem('pljsquality', State.nativeQualityOverride);
+                    Timecode.save(d.postId, translatorId, seasonId, episodeId, t);
+                    closeDrawer();
+                    await loadStream(State.activeTranslatorId, State.activeSeason, State.activeEpisode);
+                    return;
+                  }
+                  if (!video) return;
                   video.src = State.streamQualities[q];
                   video.currentTime = t;
                   video.play();
@@ -2293,7 +2489,7 @@
               style: !State.activeSubtitleId ? 'color:var(--accent)' : '',
               onClick: () => {
                 State.activeSubtitleId = null;
-                [...video.querySelectorAll('track')].forEach(t => t.remove());
+                withVideo(v => [...v.querySelectorAll('track')].forEach(t => t.remove()));
                 closeDrawer();
                 showUI();
               }
@@ -2306,16 +2502,18 @@
                 style: s.url === State.activeSubtitleId ? 'color:var(--accent)' : '',
                 onClick: () => {
                   State.activeSubtitleId = s.url;
-                  [...video.querySelectorAll('track')].forEach(t => t.remove());
+                  const activeVideo = currentVideo();
+                  if (!activeVideo) return;
+                  [...activeVideo.querySelectorAll('track')].forEach(t => t.remove());
                   const track = document.createElement('track');
                   track.kind = 'subtitles';
                   track.label = s.label;
                   track.srclang = 'ru';
                   track.src = s.url;
                   track.default = true;
-                  video.appendChild(track);
+                  activeVideo.appendChild(track);
                   track.onload = () => {
-                    const t = video.textTracks[0];
+                    const t = activeVideo.textTracks[0];
                     if (t) t.mode = 'showing';
                   };
                   closeDrawer();
@@ -2368,51 +2566,77 @@
 
         // Video Events
         const updatePlayBtn = () => {
+          const v = currentVideo();
+          if (!v) {
+            playBtnBig.classList.add('hdm-buffering');
+            playBtnBig.innerHTML = '';
+            return;
+          }
           playBtnBig.classList.remove('hdm-buffering');
-          playBtnBig.innerHTML = video.paused ? ICONS.play : ICONS.pause;
+          playBtnBig.innerHTML = v.paused ? ICONS.play : ICONS.pause;
         };
-        video.addEventListener('play', () => { updatePlayBtn(); showUI(); });
-        video.addEventListener('pause', () => {
-          updatePlayBtn();
-          Timecode.save(d.postId, translatorId, seasonId, episodeId, video.currentTime);
-          showUI();
-        });
-        video.addEventListener('waiting', () => {
-          playBtnBig.classList.add('hdm-buffering');
-          playBtnBig.innerHTML = '';
-        });
-        video.addEventListener('playing', () => { updatePlayBtn(); });
-
         let lastSave = 0;
-        video.addEventListener('timeupdate', () => {
-          const now = Math.floor(video.currentTime);
+        let lastEnded = false;
+        const syncPlaybackUi = () => {
+          const v = currentVideo();
+          updatePlayBtn();
+          if (!v) return;
+
+          const now = Math.floor(v.currentTime || 0);
           if (now % 5 === 0 && now !== lastSave) {
             lastSave = now;
-            Timecode.save(d.postId, translatorId, seasonId, episodeId, video.currentTime);
+            Timecode.save(d.postId, translatorId, seasonId, episodeId, v.currentTime);
           }
-          const p = (video.currentTime / video.duration) * 100;
-          scrubAct.style.width = p + '%';
-          scrubKnob.style.left = p + '%';
-          timeCurr.textContent = formatTime(video.currentTime);
-          timeTotal.textContent = formatTime(video.duration);
 
-          if (video.buffered.length > 0) {
-            const b = (video.buffered.end(video.buffered.length - 1) / video.duration) * 100;
+          if (!isNaN(v.duration) && v.duration > 0) {
+            const p = (v.currentTime / v.duration) * 100;
+            scrubAct.style.width = p + '%';
+            scrubKnob.style.left = p + '%';
+            timeCurr.textContent = formatTime(v.currentTime);
+            timeTotal.textContent = formatTime(v.duration);
+          }
+
+          if (v.buffered && v.buffered.length > 0 && !isNaN(v.duration) && v.duration > 0) {
+            const b = (v.buffered.end(v.buffered.length - 1) / v.duration) * 100;
             scrubBuf.style.width = b + '%';
           }
-        });
 
-        video.addEventListener('loadedmetadata', () => {
-          timeTotal.textContent = formatTime(video.duration);
-          const lastTime = Timecode.get(d.postId, translatorId, seasonId, episodeId);
-          if (lastTime > 0 && lastTime < video.duration - 10) video.currentTime = lastTime;
-        });
+          if (v.ended && !lastEnded) {
+            lastEnded = true;
+            const next = findNextEpisode();
+            if (next) loadStream(translatorId, next.seasonId, next.episodeId);
+            else history.back();
+          } else if (!v.ended) {
+            lastEnded = false;
+          }
+        };
 
-        video.addEventListener('ended', () => {
-          const next = findNextEpisode();
-          if (next) loadStream(translatorId, next.seasonId, next.episodeId);
-          else history.back();
-        });
+        if (!isNativeEngine && video) {
+          video.addEventListener('play', () => { updatePlayBtn(); showUI(); });
+          video.addEventListener('pause', () => {
+            updatePlayBtn();
+            Timecode.save(d.postId, translatorId, seasonId, episodeId, video.currentTime);
+            showUI();
+          });
+          video.addEventListener('waiting', () => {
+            playBtnBig.classList.add('hdm-buffering');
+            playBtnBig.innerHTML = '';
+          });
+          video.addEventListener('playing', () => { updatePlayBtn(); });
+          video.addEventListener('timeupdate', syncPlaybackUi);
+          video.addEventListener('loadedmetadata', () => {
+            timeTotal.textContent = formatTime(video.duration);
+            const lastTime = Timecode.get(d.postId, translatorId, seasonId, episodeId);
+            if (lastTime > 0 && lastTime < video.duration - 10) video.currentTime = lastTime;
+          });
+          video.addEventListener('ended', () => {
+            const next = findNextEpisode();
+            if (next) loadStream(translatorId, next.seasonId, next.episodeId);
+            else history.back();
+          });
+        } else {
+          State.nativeSyncInterval = setInterval(syncPlaybackUi, 250);
+        }
 
         // Double tap gestures
         let lastTap = 0;
@@ -2422,10 +2646,10 @@
             const x = e.touches[0].clientX;
             const w = window.innerWidth;
             if (x < w * 0.4) {
-              video.currentTime -= 10;
+              withVideo(v => { v.currentTime -= 10; });
               createRipple(overlay, x, e.touches[0].clientY);
             } else if (x > w * 0.6) {
-              video.currentTime += 10;
+              withVideo(v => { v.currentTime += 10; });
               createRipple(overlay, x, e.touches[0].clientY);
             }
           }
@@ -2443,7 +2667,7 @@
           playerContainer.onclick = showUI;
           if (!playerContainer.contains(overlay)) playerContainer.appendChild(overlay);
         }
-        playerWrap.appendChild(video);
+        if (!isNativeEngine && video) playerWrap.appendChild(video);
         playerWrap.appendChild(overlay);
 
         const parts = [`t:${translatorId}`];
@@ -2490,7 +2714,6 @@
       // Fullscreen container: video on top, controls scrollable below
       main.appendChild(h('div', { id: 'hdm-player-container' },
         h('div', { id: 'hdm-player-wrap' }),
-        h('div', { id: 'hdm-player-controls', class: 'player-controls' })
       ));
 
       const favToggle = document.querySelector('.fav-header-btn');
@@ -2880,13 +3103,23 @@
               const current = localStorage.getItem('hdm-default-quality') || '1080p';
               return h('option', { value: q, ...(q === current ? { selected: 'selected' } : {}) }, q);
             }))
+          ),
+          h('div', { class: 'p-item hdm-focusable', style: 'justify-content: space-between;' },
+            h('span', {}, 'Тип плеера'),
+            h('select', {
+              style: 'background:none; border:none; color:var(--accent); font-weight:700; font-family:inherit; font-size:14px; outline:none; direction:rtl; width: 120px;',
+              onChange: (e) => localStorage.setItem('hdm-player-type', e.target.value)
+            }, [{ v: 'custom', t: 'Свой' }, { v: 'native', t: 'С сайта' }].map(opt => {
+              const cur = localStorage.getItem('hdm-player-type') || 'custom';
+              return h('option', { value: opt.v, ...(opt.v === cur ? { selected: 'selected' } : {}) }, opt.t);
+            }))
           )
         ),
         h('div', { class: 'p-header', style: 'margin-top:24px' }, 'Аккаунт'),
         h('div', { class: 'p-links' },
           h('div', { class: 'p-item hdm-focusable', onClick: () => loadLoginView() }, 'Войти')
         ),
-        h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0003')
+        h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0004')
       );
       main.appendChild(p);
       return;
@@ -2912,6 +3145,16 @@
             const current = localStorage.getItem('hdm-default-quality') || '1080p';
             return h('option', { value: q, ...(q === current ? { selected: 'selected' } : {}) }, q);
           }))
+        ),
+        h('div', { class: 'p-item hdm-focusable', style: 'justify-content: space-between;' },
+          h('span', {}, 'Тип плеера'),
+          h('select', {
+            style: 'background:none; border:none; color:var(--accent); font-weight:700; font-family:inherit; font-size:14px; outline:none; direction:rtl; width: 120px;',
+            onChange: (e) => localStorage.setItem('hdm-player-type', e.target.value)
+          }, [{ v: 'custom', t: 'Свой' }, { v: 'native', t: 'С сайта' }].map(opt => {
+            const cur = localStorage.getItem('hdm-player-type') || 'custom';
+            return h('option', { value: opt.v, ...(opt.v === cur ? { selected: 'selected' } : {}) }, opt.t);
+          }))
         )
       ),
       h('div', { class: 'p-header', style: 'margin-top:24px' }, 'Аккаунт'),
@@ -2921,7 +3164,7 @@
         h('div', { class: 'p-item hdm-focusable', onClick: () => navigateTo('/payments/') }, 'Платежи'),
         h('div', { class: 'p-item logout', onClick: () => navigateTo('/logout/') }, 'Выйти')
       ),
-      h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0003')
+      h('div', { style: 'text-align:center; padding: 20px 0 10px; font-size: 12px; color: var(--text-dim); opacity: 0.5;' }, 'HDrezka Plus v1.0004')
     );
     main.appendChild(p);
   }
